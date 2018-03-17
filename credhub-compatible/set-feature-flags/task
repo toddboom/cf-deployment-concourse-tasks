@@ -1,0 +1,52 @@
+#!/bin/bash -exu
+
+if [ -z "${SYSTEM_DOMAIN}" ]; then
+  echo "\$SYSTEM_DOMAIN is a required parameter"
+  exit 1
+fi
+
+function set_enabled_feature_flags() {
+  if [ ! -z "${ENABLED_FEATURE_FLAGS}" ]; then
+    for flag in $ENABLED_FEATURE_FLAGS; do
+      set_feature_flag "$flag" true
+    done
+  fi
+}
+
+function set_disabled_feature_flags() {
+  if [ ! -z "${DISABLED_FEATURE_FLAGS}" ]; then
+    for flag in $DISABLED_FEATURE_FLAGS; do
+      set_feature_flag "$flag" false
+    done
+  fi
+}
+
+function set_feature_flag() {
+  if [ $2 == true ]; then
+    cf enable-feature-flag "$1"
+  else
+    cf disable-feature-flag "$1"
+  fi
+}
+
+function cf_login() {
+  set +x
+  echo "Authenticating as admin"
+  local director_name=$(jq bbl-state.json -r .bosh/directorName)
+  $(credhub get -n /bosh-bbl-env-vostok-2017-09-12t21-53z/cf/cf_admin_password -j | jq -r .value)
+  cf auth admin $(bosh interpolate vars-store/${VARS_STORE_FILE} --path=/cf_admin_password)
+  set -x
+}
+
+function main() {
+  cf api --skip-ssl-validation "api.${SYSTEM_DOMAIN}"
+
+  cf_login
+
+  set_enabled_feature_flags
+  set_disabled_feature_flags
+
+  cf feature-flags
+}
+
+main
